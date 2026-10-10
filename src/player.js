@@ -229,6 +229,8 @@ class Player extends Fighter {
     this.counts.attacks++;
     this.startAct(kind, kind === 'heavy' ? 1.1 : 0.55);
     Sound.play(kind === 'heavy' ? 'heavySwing' : 'swing');
+    const heavy = kind === 'heavy';
+    Fx.sector({ x: this.x, y: this.y, z: this.z, yaw: this.yaw, range: heavy ? 2.9 : 2.3, arc: heavy ? 1.6 : 1.9, dur: 0.3, color: 0xf4f8ff, mode: 'swing', peak: 0.5 });
   }
 
   // Strikes land inside the middle window of each swing.
@@ -245,6 +247,7 @@ class Player extends Fighter {
     if (hits > 0) {
       a.hit = true;
       Sound.play('hit');
+      Game.shake = Math.max(Game.shake, heavy ? 0.22 : 0.08);
     }
   }
 
@@ -411,6 +414,8 @@ class Player extends Fighter {
     }
 
     if (!blocked) Sound.play('hurt');
+    Fx.popup(this.x, this.y + 2.2, this.z, `-${Math.round(amount)}`, '#ff6a5a', amount >= 30);
+    this.flash(blocked ? 0x9fd8ff : 0xff2a1a, 0.18);
     this.hp -= amount;
     this.hurt = 0.3;
     this.stagger = Math.max(this.stagger, opts.stagger ?? 0.3);

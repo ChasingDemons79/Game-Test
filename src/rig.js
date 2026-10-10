@@ -3,24 +3,45 @@
 
 const Rig = {
   _mats: new Map(),
-  mat(color, opts = {}) {
-    const key = color + (opts.emissive ? 'e' : '') + (opts.transparent ? 't' : '');
-    let m = this._mats.get(key);
+  mat(color) {
+    let m = this._mats.get(color);
     if (!m) {
-      m = new THREE.MeshLambertMaterial({ color, flatShading: true, ...opts });
-      this._mats.set(key, m);
+      // Cloth-and-leather look: rough, with a fine weave in the normal map.
+      m = Materials.std(color, { set: 'fabric', roughness: 0.72, metalness: 0.04, normalScale: 0.5 });
+      this._mats.set(color, m);
     }
     return m;
   },
-  // Box geometries are shared by size so a crowd of enemies does not allocate thousands of buffers.
+  // Boxes with softly rounded edges, shared by size so a crowd does not allocate thousands of buffers.
   geo(w, h, d) {
     if (!this._geos) this._geos = new Map();
     const key = `${w.toFixed(3)}|${h.toFixed(3)}|${d.toFixed(3)}`;
     let g = this._geos.get(key);
     if (!g) {
-      g = new THREE.BoxGeometry(w, h, d);
+      g = Rig.roundedBox(w, h, d, Math.min(w, h, d) * 0.42);
       this._geos.set(key, g);
     }
+    return g;
+  },
+
+  // Pushes every vertex of a subdivided box onto a rounded shell of radius r.
+  roundedBox(w, h, d, r) {
+    const g = new THREE.BoxGeometry(w, h, d, 6, 6, 6);
+    const p = g.attributes.position;
+    const hx = w / 2, hy = h / 2, hz = d / 2;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i);
+      const cx = Util.clamp(v.x, -hx + r, hx - r);
+      const cy = Util.clamp(v.y, -hy + r, hy - r);
+      const cz = Util.clamp(v.z, -hz + r, hz - r);
+      const dx = v.x - cx, dy = v.y - cy, dz = v.z - cz;
+      const len = Math.hypot(dx, dy, dz);
+      if (len > 1e-6) {
+        p.setXYZ(i, cx + (dx / len) * r, cy + (dy / len) * r, cz + (dz / len) * r);
+      }
+    }
+    g.computeVertexNormals();
     return g;
   },
   box(w, h, d, color, parent, x = 0, y = 0, z = 0) {
@@ -144,6 +165,11 @@ const Rig = {
       } else if (act.type === 'roll') {
         roll.rotation.x = -act.p * Math.PI * 2;
         roll.position.y = 0.95 * rig.s + Math.sin(act.p * Math.PI) * 0.15;
+      } else if (act.type === 'strike') {
+        // The downward chop of an attack, after its windup.
+        const q = 1 - Math.pow(1 - act.p, 3);
+        armR.rotation.x = Util.lerp(-2.4, 1.5, q);
+        torso.rotation.x = Util.lerp(-0.15, 0.25, q);
       } else if (act.type === 'recover') {
         armR.rotation.x = Math.max(-0.25, 1.1 - act.p * 1.3);
       }
@@ -269,7 +295,7 @@ const Rig = {
     for (let i = 0; i < count; i++) {
       const r = (0.55 - i * 0.035) * s;
       const seg = Rig.pivot(root, 0, r, -i * 0.7 * s);
-      const m = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), Rig.mat(i % 2 ? color : accent));
+      const m = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), Rig.mat(i % 2 ? color : accent));
       m.castShadow = true;
       seg.add(m);
       if (i === 0) {

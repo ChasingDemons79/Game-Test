@@ -153,6 +153,7 @@ class Boss extends Fighter {
       this.y = Util.lerp(this.y, this.yTarget, 1 - Math.exp(-4 * dt));
     }
 
+    this.glowAmt = this.act && this.act.type === 'windup' ? 0.6 : 0;
     if (this.act) {
       if (this.act.type === 'windup') this.faceAt(Game.player.x, Game.player.z);
       this.animate(dt, { flying: !!this.def.flyHeight, airborne: !!this.def.flyHeight });
@@ -172,8 +173,12 @@ class Boss extends Fighter {
         this.pending = choice;
         this.lastAttackId = choice.id;
         this.faceAt(player.x, player.z);
-        this.startAct('windup', choice.windup * (this.phase === 2 ? 0.8 : 1));
+        const windup = choice.windup * (this.phase === 2 ? 0.8 : 1);
+        this.startAct('windup', windup);
         Sound.play('warn');
+        if (choice.maxDist && choice.maxDist <= 7) {
+          Fx.sector({ x: this.x, y: this.y, z: this.z, yaw: this.yaw, range: choice.maxDist, arc: 2.2, dur: windup, color: 0xff4a2a, peak: 0.4 });
+        }
         this.animate(dt);
         return;
       }
@@ -217,7 +222,10 @@ class Boss extends Fighter {
       const atk = this.pending;
       this.pending = null;
       atk.strike(this);
-      this.startAct('recover', atk.recover);
+      this.recoverDur = atk.recover;
+      this.startAct('strike', 0.25);
+    } else if (done.type === 'strike') {
+      this.startAct('recover', this.recoverDur);
     } else if (done.type === 'recover') {
       this.cd = this.def.cooldown * (this.phase === 2 ? 0.7 : 1) * (0.8 + Math.random() * 0.4);
     }

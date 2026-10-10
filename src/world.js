@@ -72,31 +72,66 @@ const World = {
     World.buildSealRing(scene);
   },
 
+  // Grass on flat ground, bare rock on steep faces and high ground. The blend happens in the
+  // shader, using a per-vertex rockMix value, so the seam between textures is smooth.
   buildTerrain(scene) {
-    const size = CONFIG.WORLD_HALF * 2, seg = 200;
+    const size = CONFIG.WORLD_HALF * 2, seg = 240;
     const geo = new THREE.PlaneGeometry(size, size, seg, seg);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), z = pos.getZ(i);
-      pos.setY(i, World.heightAt(x, z));
+      pos.setY(i, World.heightAt(pos.getX(i), pos.getZ(i)));
     }
     geo.computeVertexNormals();
-    const colors = new Float32Array(pos.count * 3);
     const normal = geo.attributes.normal;
+    const uv = geo.attributes.uv;
+    const colors = new Float32Array(pos.count * 3);
+    const rockMix = new Float32Array(pos.count);
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-      const steep = normal.getY(i);
-      const grass = World.vnoise(x * 0.05, z * 0.05);
-      c.setRGB(0.19 + grass * 0.08, 0.33 + grass * 0.1, 0.15 + grass * 0.04);
-      if (y < 1.2) c.setRGB(0.55, 0.5, 0.36);                       // shoreline and sand
-      if (steep < 0.72) c.setRGB(0.42, 0.4, 0.38);                   // rock faces
-      if (y > 44) c.setRGB(0.88, 0.9, 0.95);                         // snowy peaks
+      const slope = normal.getY(i);
+      rockMix[i] = Util.clamp(Util.smooth(0.72, 0.5, slope) + Util.smooth(38, 46, y) * 0.6, 0, 1);
+      const v = 0.9 + World.vnoise(x * 0.05, z * 0.05) * 0.2;
+      c.setRGB(v, v * 1.02, v * 0.9);
+      if (y < 1.2) c.setRGB(1.3, 1.1, 0.8);     // sand at the shoreline
+      if (y > 44) c.setRGB(1.4, 1.4, 1.45);     // snow on the peaks
       colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+      uv.setXY(i, x / 10, z / 10);
     }
+    uv.needsUpdate = true;
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    geo.setAttribute('rockMix', new THREE.BufferAttribute(rockMix, 1));
+
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.92,
+      metalness: 0,
+      map: Materials.map('grass_albedo'),
+      normalMap: Materials.map('grass_normal'),
+      normalScale: new THREE.Vector2(1.2, 1.2),
+    });
+    const rockAlbedo = Materials.map('rock_albedo');
+    const rockNormal = Materials.map('rock_normal');
+    mat.onBeforeCompile = shader => {
+      shader.uniforms.rockMap = { value: rockAlbedo };
+      shader.uniforms.rockNormalMap = { value: rockNormal };
+      shader.vertexShader = 'attribute float rockMix;\nvarying float vRockMix;\n' + shader.vertexShader
+        .replace('#include <uv_vertex>', '#include <uv_vertex>\n  vRockMix = rockMix;');
+      shader.fragmentShader = 'uniform sampler2D rockMap;\nuniform sampler2D rockNormalMap;\nvarying float vRockMix;\n' + shader.fragmentShader
+        .replace('#include <map_fragment>', `#ifdef USE_MAP
+  vec4 grassTex = texture2D( map, vUv );
+  vec4 rockTex = texture2D( rockMap, vUv );
+  diffuseColor *= mix( grassTex, rockTex, vRockMix );
+#endif`)
+        .replace('#include <normal_fragment_maps>', `#ifdef USE_NORMALMAP
+  vec3 grassN = texture2D( normalMap, vUv ).xyz * 2.0 - 1.0;
+  vec3 rockN = texture2D( rockNormalMap, vUv ).xyz * 2.0 - 1.0;
+  vec3 mapN = normalize( mix( grassN, rockN, vRockMix ) );
+  mapN.xy *= normalScale;
+  normal = perturbNormal2Arb( - vViewPosition, normal, mapN, faceDirection );
+#endif`);
+    };
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
     scene.add(mesh);
@@ -145,7 +180,7 @@ const World = {
     const r = Util.rng(CONFIG.SEED + 7);
     const count = 16000;
     const geo = new THREE.ConeGeometry(0.1, 0.7, 3).translate(0, 0.35, 0);
-    const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff }), count);
+    const im = new THREE.InstancedMesh(geo, Materials.std(0xffffff, { set: 'grass', roughness: 0.9, normalScale: 0.6 }), count);
     const dummy = new THREE.Object3D();
     const c = new THREE.Color();
     let n = 0;
@@ -175,8 +210,7 @@ const World = {
   addInstanced(scene, items, kind) {
     if (!items.length) return;
     const dummy = new THREE.Object3D();
-    const add = (geo, color) => {
-      const mat = new THREE.MeshLambertMaterial({ color, flatShading: true });
+    const add = (geo, mat) => {
       const im = new THREE.InstancedMesh(geo, mat, items.length);
       im.castShadow = true;
       im.receiveShadow = true;
@@ -193,13 +227,13 @@ const World = {
       scene.add(im);
     };
     if (kind === 'pine') {
-      add(new THREE.CylinderGeometry(0.22, 0.32, 2.6, 6).translate(0, 1.3, 0), 0x5b3d24);
-      add(new THREE.ConeGeometry(2.1, 5.2, 7).translate(0, 4.6, 0), 0x2c5a2e);
+      add(new THREE.CylinderGeometry(0.22, 0.32, 2.6, 10).translate(0, 1.3, 0), Materials.std(0xffffff, { set: 'bark', roughness: 0.9, normalScale: 1.2 }));
+      add(new THREE.ConeGeometry(2.1, 5.2, 12).translate(0, 4.6, 0), Materials.std(0x6fa06a, { set: 'needles', roughness: 0.85, normalScale: 0.8 }));
     } else if (kind === 'dead') {
-      add(new THREE.CylinderGeometry(0.12, 0.3, 5.5, 5).translate(0, 2.75, 0), 0x5c5448);
-      add(new THREE.CylinderGeometry(0.04, 0.1, 2.2, 4).translate(0.4, 4.2, 0).rotateZ(-0.7), 0x5c5448);
+      add(new THREE.CylinderGeometry(0.12, 0.3, 5.5, 8).translate(0, 2.75, 0), Materials.std(0xb8b09a, { set: 'bark', roughness: 0.95, normalScale: 1.2 }));
+      add(new THREE.CylinderGeometry(0.04, 0.1, 2.2, 6).translate(0.4, 4.2, 0).rotateZ(-0.7), Materials.std(0xb8b09a, { set: 'bark', roughness: 0.95, normalScale: 1.2 }));
     } else {
-      add(new THREE.DodecahedronGeometry(0.9, 0).translate(0, 0.2, 0), 0x7a7770);
+      add(new THREE.DodecahedronGeometry(0.9, 1).translate(0, 0.2, 0), Materials.std(0xffffff, { set: 'rock', roughness: 0.9, normalScale: 1.4 }));
     }
   },
 
@@ -214,7 +248,7 @@ const World = {
     const y = World.heightAt(s.x, s.z);
     const tent = (x, z, rot) => {
       const g = new THREE.Group();
-      const mesh = new THREE.Mesh(new THREE.ConeGeometry(1.8, 2.4, 4).rotateY(Math.PI / 4), new THREE.MeshLambertMaterial({ color: 0x7a5a3a, flatShading: true }));
+      const mesh = new THREE.Mesh(new THREE.ConeGeometry(1.8, 2.4, 4).rotateY(Math.PI / 4), Materials.std(0x9a7a58, { set: 'fabric', roughness: 0.9 }));
       mesh.position.y = 1.2;
       g.add(mesh);
       g.position.set(x, y, z);
@@ -225,7 +259,7 @@ const World = {
     tent(s.x - 14, s.z + 8, 0.6);
     tent(s.x - 10, s.z - 12, 2.1);
     tent(s.x + 12, s.z + 4, 4.0);
-    const banner = new THREE.Mesh(new THREE.BoxGeometry(0.1, 5, 0.1), new THREE.MeshLambertMaterial({ color: 0x3a2a2a }));
+    const banner = new THREE.Mesh(new THREE.BoxGeometry(0.1, 5, 0.1), Materials.std(0x5a3a2a, { set: 'fabric', roughness: 0.9 }));
     banner.position.set(s.x + 2, y + 2.5, s.z - 4);
     scene.add(banner);
     const flag = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.9, 0.05), new THREE.MeshBasicMaterial({ color: 0xb3262e }));
@@ -237,7 +271,7 @@ const World = {
     const y = World.heightAt(s.x, s.z);
     const floor = new THREE.Mesh(
       new THREE.CylinderGeometry(s.r, s.r + 0.6, 0.5, 36),
-      new THREE.MeshLambertMaterial({ color: 0x4a4540, flatShading: true })
+      Materials.std(0x8a847a, { set: 'stone', roughness: 0.92, normalScale: 1.0 })
     );
     floor.position.set(s.x, y + 0.1, s.z);
     scene.add(floor);
@@ -249,7 +283,7 @@ const World = {
       const px = s.x + Math.cos(a) * (s.r - 1), pz = s.z + Math.sin(a) * (s.r - 1);
       const pillar = new THREE.Mesh(
         new THREE.CylinderGeometry(0.9, 1.1, h, 7),
-        new THREE.MeshLambertMaterial({ color: 0x6f6a62, flatShading: true })
+        Materials.std(0xbdb6a8, { set: 'stone', roughness: 0.9, normalScale: 1.0 })
       );
       pillar.position.set(px, y + h / 2, pz);
       scene.add(pillar);
@@ -276,7 +310,7 @@ const World = {
     g.add(barrier);
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2;
-      const p = new THREE.Mesh(new THREE.BoxGeometry(1.4, 9, 1.4), new THREE.MeshLambertMaterial({ color: 0x3a3440, flatShading: true }));
+      const p = new THREE.Mesh(new THREE.BoxGeometry(1.4, 9, 1.4), Materials.std(0x6a6276, { set: 'stone', roughness: 0.9, normalScale: 1.0 }));
       p.position.set(Math.cos(a) * s.sealRadius, 4.5, Math.sin(a) * s.sealRadius);
       g.add(p);
       if (i % 2 === 0) World.obstacles.push({ x: s.x + Math.cos(a) * s.sealRadius, z: s.z + Math.sin(a) * s.sealRadius, r: 0.9 });
@@ -297,14 +331,14 @@ const World = {
     const [bx, bz] = s.bonfire;
     const y = World.heightAt(bx, bz);
     const g = new THREE.Group();
-    const stoneMat = new THREE.MeshLambertMaterial({ color: 0x5a554e, flatShading: true });
+    const stoneMat = Materials.std(0xc4bdb0, { set: 'stone', roughness: 0.9, normalScale: 1.0 });
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2;
       const st = new THREE.Mesh(new THREE.DodecahedronGeometry(0.42, 0), stoneMat);
       st.position.set(Math.cos(a) * 0.9, 0.2, Math.sin(a) * 0.9);
       g.add(st);
     }
-    const logMat = new THREE.MeshLambertMaterial({ color: 0x4a3018 });
+    const logMat = Materials.std(0xffffff, { set: 'bark', roughness: 0.9, normalScale: 1.2 });
     for (let i = 0; i < 3; i++) {
       const log = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.4, 5), logMat);
       log.rotation.set(Math.PI / 2, 0, (i / 3) * Math.PI);

@@ -99,13 +99,15 @@ const Game = {
   pendingVictory: false,
   authMode: 'signup',
   tutChoice: 'keyboard',
+  shake: 0,
   highQuality: true,
 
-  init() {
+  async init() {
     const canvas = document.getElementById('game');
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.outputEncoding = THREE.sRGBEncoding;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -123,10 +125,17 @@ const Game = {
     sky.fillStyle = grad;
     sky.fillRect(0, 0, 4, 256);
     this.scene.background = new THREE.CanvasTexture(skyCanvas);
+    // The same sky lights and reflects the materials, so metal and stone pick up believable highlights.
+    const envTex = new THREE.CanvasTexture(skyCanvas);
+    envTex.mapping = THREE.EquirectangularReflectionMapping;
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromEquirectangular(envTex).texture;
+    pmrem.dispose();
+    envTex.dispose();
     this.scene.fog = new THREE.Fog(0xb8cfe0, 150, 470);
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 900);
 
-    const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x3a3020, 0.75);
+    const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x3a3020, 0.35);
     const sun = new THREE.DirectionalLight(0xffe7b0, 1.0);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -138,6 +147,8 @@ const Game = {
     this.scene.add(hemi, sun, sun.target);
     this.setQuality(localStorage.getItem('hollowcrown.graphics') !== 'low');
 
+    // Textures load first, so every material is built with its maps.
+    await Materials.load(this.renderer);
     Fx.init(this.scene);
     World.build(this.scene);
     UI.init();
@@ -493,6 +504,7 @@ const Game = {
 
   onPlayerHurt() {
     UI.flash();
+    this.shake = Math.max(this.shake, 0.3);
   },
 
   onPlayerDeath() {
@@ -610,7 +622,9 @@ const Game = {
       sub: `${def.desc} Ability: ${def.abilityName}.`,
       onPick: () => {
         this.setCompanion(kind);
-        if (bf) this.openMenuFor(bf); else this.closeMenu();
+        // Close the menus so the mount key works straight away.
+        this.closeMenu();
+        this.msg(`Press ${Input.usingGamepad() ? 'View' : 'R'} to mount ${def.name}`);
       },
     }));
     if (bf) items.push({ label: 'Back', onPick: () => this.openMenuFor(bf) });
@@ -844,16 +858,23 @@ const Game = {
       UI.setSouls(p.souls);
       this.saveGame();
     }
+    // The most relevant prompt wins: fallen souls, then a bonfire, then the companion.
+    const btn = Input.usingGamepad() ? 'View' : 'R';
+    let prompt = '';
+    if (p.rider) {
+      prompt = `${btn}: dismount ${p.rider.def.name}`;
+    } else if (this.companion && !this.companion.downed && Util.dist(p.x, p.z, this.companion.x, this.companion.z) < 7) {
+      prompt = `${btn}: mount ${this.companion.def.name}`;
+    }
     if (bf) {
       const rest = Input.usingGamepad() ? 'B' : 'E';
-      UI.setPrompt(this.state === 'playing' ? `${rest}: rest at the bonfire` : '');
+      prompt = `${rest}: rest at the bonfire`;
       if (Input.pressed('interact') && this.state === 'playing') this.openBonfire(bf);
-    } else {
-      UI.setPrompt('');
     }
     if (this.dropPile && Util.dist(p.x, p.z, this.dropPile.x, this.dropPile.z) < 8) {
-      UI.setPrompt('Walk over your fallen souls to reclaim them');
+      prompt = 'Walk over your fallen souls to reclaim them';
     }
+    UI.setPrompt(this.state === 'playing' ? prompt : '');
     const site = this.siteNear(p.x, p.z);
     UI.setLocation(site ? site.name : 'The Open Lands');
   },
@@ -916,6 +937,13 @@ const Game = {
     this.camera.position.set(cx, cy, cz);
     this.camera.lookAt(tx, ty, tz);
     this.followSun(tx, ty, tz);
+    // Shake from hits, decaying quickly.
+    if (this.shake > 0) {
+      const k = this.shake;
+      this.camera.position.x += (Math.random() - 0.5) * k;
+      this.camera.position.y += (Math.random() - 0.5) * k;
+      this.shake = Math.max(0, this.shake - dt * 1.8);
+    }
   },
 
   idleCamera(dt) {
@@ -1021,6 +1049,7 @@ const Game = {
 
     World.update(dt, this.time);
     this.renderer.render(this.scene, this.camera);
+    Fx.projectPopups(this.camera, window.innerWidth, window.innerHeight);
     Input.endFrame();
     requestAnimationFrame(now2 => this.loop(now2));
   },

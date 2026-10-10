@@ -49,7 +49,9 @@ const Fx = {
     this.partGeo = new THREE.BoxGeometry(0.14, 0.14, 0.14);
     this.ringGeo = new THREE.RingGeometry(0.86, 1, 40).rotateX(-Math.PI / 2);
     this.discGeo = new THREE.CircleGeometry(1, 40).rotateX(-Math.PI / 2);
-    this.projGeo = new THREE.SphereGeometry(1, 10, 8);
+    this.projGeo = new THREE.SphereGeometry(1, 16, 12);
+    this.sectors = [];
+    this.popups = [];
   },
 
   spark(x, y, z, color = 0xffd27a, n = 8) {
@@ -79,6 +81,57 @@ const Fx = {
     this.hazards.push({ x, z, r, delay, dmg, poison, life: poison ? life : life, t: 0, tick: 0, fired: false, mesh, color, onActive });
   },
 
+  // A pie-slice on the ground. "telegraph" fades in during an enemy windup, "swing" fades out after a player attack.
+  sector({ x, y, z, yaw, range, arc, dur, color = 0xffffff, mode = 'telegraph', peak = 0.4 }) {
+    if (!this.scene) return;
+    const seg = 20;
+    const pos = [0, 0, 0];
+    for (let i = 0; i <= seg; i++) {
+      const a = -arc / 2 + (arc * i) / seg;
+      pos.push(Math.cos(a) * range, 0, Math.sin(a) * range);
+    }
+    const idx = [];
+    for (let i = 1; i <= seg; i++) idx.push(0, i, i + 1);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, World.heightAt(x, z) + 0.12, z);
+    // The slice is built around +x. This turns it to face the yaw direction.
+    mesh.rotation.y = yaw - Math.PI / 2;
+    this.scene.add(mesh);
+    this.sectors.push({ mesh, t: 0, dur, mode, peak });
+  },
+
+  // Floating numbers that rise above the target and fade out.
+  popup(x, y, z, text, color = '#ffe9b0', big = false) {
+    if (!this.popupLayer) this.popupLayer = document.getElementById('popups');
+    if (!this.popupLayer) return;
+    const el = document.createElement('div');
+    el.className = big ? 'popup big' : 'popup';
+    el.textContent = text;
+    el.style.color = color;
+    this.popupLayer.appendChild(el);
+    this.popups.push({ el, x, y, z, t: 0, life: big ? 1.1 : 0.85 });
+    while (this.popups.length > 60) this.popups.shift().el.remove();
+  },
+
+  projectPopups(camera, width, height) {
+    const v = new THREE.Vector3();
+    for (let i = this.popups.length - 1; i >= 0; i--) {
+      const p = this.popups[i];
+      v.set(p.x, p.y + p.t * 1.4, p.z).project(camera);
+      if (v.z > 1 || v.z < -1) {
+        p.el.style.display = 'none';
+      } else {
+        p.el.style.display = '';
+        p.el.style.transform = `translate(${((v.x * 0.5 + 0.5) * width).toFixed(1)}px, ${((-v.y * 0.5 + 0.5) * height).toFixed(1)}px)`;
+        p.el.style.opacity = Math.min(1, (p.life - p.t) / 0.3).toFixed(2);
+      }
+    }
+  },
+
   projectile({ x, y, z, dir, speed = 14, dmg = 15, r = 0.4, life = 4, homing = 0, color = 0xffc070, size = 1 }) {
     const m = new THREE.Mesh(this.projGeo, new THREE.MeshBasicMaterial({ color }));
     m.scale.setScalar(r * size);
@@ -88,6 +141,26 @@ const Fx = {
   },
 
   update(dt) {
+    for (let i = this.sectors.length - 1; i >= 0; i--) {
+      const s = this.sectors[i];
+      s.t += dt;
+      const k = Math.min(1, s.t / s.dur);
+      s.mesh.material.opacity = s.mode === 'swing' ? s.peak * (1 - k) : s.peak * k;
+      if (s.t >= s.dur) {
+        this.scene.remove(s.mesh);
+        s.mesh.geometry.dispose();
+        s.mesh.material.dispose();
+        this.sectors.splice(i, 1);
+      }
+    }
+    for (let i = this.popups.length - 1; i >= 0; i--) {
+      const p = this.popups[i];
+      p.t += dt;
+      if (p.t >= p.life) {
+        p.el.remove();
+        this.popups.splice(i, 1);
+      }
+    }
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
       p.t += dt;
@@ -174,6 +247,10 @@ const Fx = {
   },
 
   clear() {
+    for (const s of this.sectors) this.scene.remove(s.mesh);
+    this.sectors = [];
+    for (const p of this.popups) p.el.remove();
+    this.popups = [];
     const all = [...this.parts.map(p => p.m), ...this.rings.map(r => r.m), ...this.hazards.map(h => h.mesh), ...this.projectiles.map(p => p.mesh)];
     for (const m of all) this.scene.remove(m);
     this.parts = []; this.rings = []; this.hazards = []; this.projectiles = [];

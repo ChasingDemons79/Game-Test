@@ -17,11 +17,46 @@ class Fighter {
     this.animT = Math.random() * 10;
     this.group = new THREE.Group();
     this.rig = null;
+    this.mats = [];
+    this.flashT = 0;
+    this.flashCol = new THREE.Color(0xffffff);
+    this.glowAmt = 0;
+    this.glowCol = new THREE.Color(0xff4a2a);
   }
 
+  // Each character gets its own copies of the shared materials, so a flash or glow
+  // affects only this character.
   setRig(rig) {
     this.rig = rig;
     this.group.add(rig.root);
+    const copies = new Map();
+    rig.root.traverse(o => {
+      if (!o.isMesh) return;
+      if (!copies.has(o.material)) {
+        const c = o.material.clone();
+        copies.set(o.material, c);
+        this.mats.push(c);
+      }
+      o.material = copies.get(o.material);
+    });
+  }
+
+  // A brief bright flash on the body, used for hit feedback.
+  flash(color = 0xffffff, seconds = 0.12) {
+    this.flashT = seconds;
+    this.flashCol.setHex(color);
+  }
+
+  // Pulses a glow while the character winds up an attack, so the telegraph is easy to read.
+  updateGlow() {
+    if (this.flashT > 0) {
+      for (const m of this.mats) m.emissive.copy(this.flashCol).multiplyScalar(0.9);
+      return;
+    }
+    for (const m of this.mats) m.emissive.setRGB(0, 0, 0);
+    if (this.glowAmt <= 0) return;
+    const pulse = this.glowAmt * (0.6 + 0.4 * Math.sin(this.animT * 18));
+    for (const m of this.mats) m.emissive.copy(this.glowCol).multiplyScalar(pulse);
   }
 
   // Start a timed action such as an attack, a roll or a windup.
@@ -51,7 +86,9 @@ class Fighter {
     this.hp -= dmg;
     this.hurt = 0.3;
     this.stagger = Math.max(this.stagger, opts.stagger ?? 0.25);
-    Fx.spark(this.x, this.y + 1.2, this.z, 0xff5a4a, 6);
+    Fx.spark(this.x, this.y + 1.2, this.z, 0xffd27a, 12);
+    Fx.popup(this.x, this.y + 2.1, this.z, `${Math.round(dmg)}`, dmg >= 30 ? '#ffb347' : '#ffe9b0', dmg >= 30);
+    this.flash(0xffffff, 0.12);
     if (this.hp <= 0) {
       this.hp = 0;
       this.kill();
@@ -80,7 +117,9 @@ class Fighter {
   animate(dt, extra = {}) {
     this.animT += dt;
     this.hurt = Math.max(0, this.hurt - dt);
+    this.flashT = Math.max(0, this.flashT - dt);
     if (this.dead) this.deathT += dt;
+    this.updateGlow();
     if (this.rig) {
       this.rig.update({
         t: this.animT,

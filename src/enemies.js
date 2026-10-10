@@ -98,6 +98,7 @@ class Enemy extends Fighter {
 
     if (this.act) {
       if (this.act.type === 'windup') this.faceToward(target?.x ?? this.x, target?.z ?? this.z, dt, 4);
+      this.glowAmt = this.act.type === 'windup' ? 0.7 : 0;
       this.animate(dt);
       return;
     }
@@ -114,6 +115,10 @@ class Enemy extends Fighter {
       } else if (this.cd <= 0 && d <= (this.def.ranged ? this.def.range : reach + 0.3)) {
         this.startAct('windup', this.def.windup);
         this.moving = 0;
+        // Melee foes show their reach on the ground while they wind up.
+        if (!this.def.ranged) {
+          Fx.sector({ x: this.x, y: this.y, z: this.z, yaw: this.yaw, range: this.def.range + 0.4, arc: 1.8, dur: this.def.windup, color: 0xff4a2a, peak: 0.45 });
+        }
       }
     } else {
       this.patrol(dt);
@@ -166,6 +171,8 @@ class Enemy extends Fighter {
   onActEnd(done) {
     if (done.type === 'windup') {
       this.strike();
+      this.startAct('strike', 0.2);
+    } else if (done.type === 'strike') {
       this.startAct('recover', this.def.recover);
     } else if (done.type === 'recover') {
       this.cd = 0.4 + Math.random() * 0.4;
