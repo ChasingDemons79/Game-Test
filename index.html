@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Hollow Crown</title>
+  <meta name="description" content="An open-world medieval souls-like. Five guardians and the Hollow Crowned King await.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+
+  <!-- In-game heads-up display -->
+  <div id="hud" class="hidden">
+    <div id="vitals">
+      <div class="bar hp"><div id="hp-fill"></div></div>
+      <div class="bar st"><div id="st-fill"></div></div>
+      <div id="flasks"></div>
+    </div>
+    <div id="souls">Souls <b id="souls-val">0</b></div>
+    <div id="location"></div>
+    <div id="companion-info"></div>
+    <div id="lock-info" class="hidden">Locked on</div>
+    <div id="prompt"></div>
+    <div id="log"></div>
+    <div id="tut" class="hidden">
+      <h3>Tutorial</h3>
+      <ul id="tut-list"></ul>
+    </div>
+    <div id="boss" class="hidden">
+      <div id="boss-name"></div>
+      <div class="track"><div id="boss-fill"></div></div>
+    </div>
+    <div id="vignette"></div>
+    <div id="banner" class="hidden">
+      <h1 id="banner-title"></h1>
+      <p id="banner-sub"></p>
+    </div>
+  </div>
+
+  <!-- Title -->
+  <section id="screen-title" class="screen">
+    <div class="card title-card">
+      <p class="kicker">A realm under a sealed throne</p>
+      <h1>Hollow Crown</h1>
+      <p class="lede">Cross the open lands on your steed. Five guardians hold the realm together. Defeat them all, and the Hollow Crowned King will wait for you.</p>
+      <div class="stack">
+        <button id="btn-continue" class="primary" disabled>Continue</button>
+        <button id="btn-new">New Pilgrim</button>
+        <button id="btn-signin">Sign In</button>
+        <button id="btn-controls">Controls</button>
+      </div>
+      <p id="title-user" class="small"></p>
+    </div>
+  </section>
+
+  <!-- Sign up / sign in -->
+  <section id="screen-auth" class="screen hidden">
+    <form id="auth-form" class="card" autocomplete="off">
+      <p class="kicker" id="auth-kicker">Sign up</p>
+      <h2 id="auth-title">Name your pilgrim</h2>
+      <label>Pilgrim name
+        <input id="auth-name" type="text" minlength="3" maxlength="16" required pattern="[A-Za-z0-9_]{3,16}" placeholder="3 to 16 letters or numbers">
+      </label>
+      <label>Password
+        <input id="auth-pass" type="password" minlength="4" maxlength="64" required placeholder="At least 4 characters">
+      </label>
+      <label id="auth-confirm-row">Confirm password
+        <input id="auth-confirm" type="password" maxlength="64" placeholder="Repeat your password">
+      </label>
+      <p id="auth-error" class="error" role="alert"></p>
+      <div class="stack">
+        <button type="submit" class="primary" id="auth-submit">Create pilgrim</button>
+        <button type="button" id="auth-switch">Already have a pilgrim? Sign in</button>
+        <button type="button" id="auth-back">Back</button>
+      </div>
+      <p class="small">Accounts and saves are stored in this browser only.</p>
+    </form>
+  </section>
+
+  <!-- Difficulty -->
+  <section id="screen-difficulty" class="screen hidden">
+    <div class="card wide">
+      <p class="kicker">Choose your trial</p>
+      <h2>Difficulty</h2>
+      <div id="diff-list" class="choices"></div>
+      <div class="stack"><button id="diff-back">Back</button></div>
+    </div>
+  </section>
+
+  <!-- Controls -->
+  <section id="screen-controls" class="screen hidden">
+    <div class="card wide">
+      <p class="kicker">How to play</p>
+      <h2>Controls</h2>
+      <div class="controls-grid">
+        <div>
+          <h3>Keyboard &amp; Mouse</h3>
+          <dl>
+            <dt>Move</dt><dd>W A S D</dd>
+            <dt>Look</dt><dd>Mouse (click the game to capture)</dd>
+            <dt>Light attack</dt><dd>Left click</dd>
+            <dt>Heavy attack</dt><dd>Q</dd>
+            <dt>Block</dt><dd>Right click or C (hold)</dd>
+            <dt>Roll / dodge</dt><dd>Space</dd>
+            <dt>Sprint</dt><dd>Shift</dd>
+            <dt>Lock on</dt><dd>Tab or middle click</dd>
+            <dt>Flask</dt><dd>F</dd>
+            <dt>Interact / rest</dt><dd>E</dd>
+            <dt>Mount / dismount</dt><dd>R</dd>
+            <dt>Mount ability</dt><dd>V</dd>
+            <dt>Summon ally</dt><dd>T</dd>
+            <dt>Flying: rise / descend</dt><dd>Space / Ctrl</dd>
+            <dt>Pause</dt><dd>Esc or P</dd>
+          </dl>
+        </div>
+        <div>
+          <h3>Gamepad</h3>
+          <dl>
+            <dt>Move</dt><dd>Left stick</dd>
+            <dt>Look</dt><dd>Right stick</dd>
+            <dt>Light attack</dt><dd>X</dd>
+            <dt>Heavy attack</dt><dd>Y</dd>
+            <dt>Block</dt><dd>LB (hold)</dd>
+            <dt>Roll / jump / rise</dt><dd>A</dd>
+            <dt>Descend (flying)</dt><dd>LT</dd>
+            <dt>Sprint</dt><dd>L3 (click)</dd>
+            <dt>Lock on</dt><dd>R3 (click)</dd>
+            <dt>Flask</dt><dd>D-pad down</dd>
+            <dt>Summon ally</dt><dd>D-pad up</dd>
+            <dt>Interact / rest</dt><dd>B</dd>
+            <dt>Mount / dismount</dt><dd>View</dd>
+            <dt>Mount ability</dt><dd>RB</dd>
+            <dt>Pause</dt><dd>Start</dd>
+          </dl>
+        </div>
+      </div>
+      <div class="stack"><button id="controls-back">Back</button></div>
+    </div>
+  </section>
+
+  <!-- Generic menu used for pause, bonfires and choices -->
+  <div id="menu" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+    <div class="card menu-card">
+      <h2 id="menu-title"></h2>
+      <p id="menu-subtitle" class="small"></p>
+      <div id="menu-items" class="stack"></div>
+      <p class="hint" id="menu-hint">Arrow keys or D-pad to choose, Enter or A to confirm, Esc or B to go back</p>
+    </div>
+  </div>
+
+  <div id="death" class="overlay hidden"><h1>YOU DIED</h1></div>
+
+  <div id="victory" class="overlay hidden">
+    <div class="card">
+      <p class="kicker">The seal breaks</p>
+      <h1>The Hollow Crown is Broken</h1>
+      <p class="lede">The five guardians have fallen, and the Hollow Crowned King is no more. The realm breathes again. You may keep wandering its lands.</p>
+      <div class="stack"><button id="victory-continue" class="primary">Keep exploring</button></div>
+    </div>
+  </div>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="src/config.js"></script>
+  <script src="src/util.js"></script>
+  <script src="src/input.js"></script>
+  <script src="src/world.js"></script>
+  <script src="src/rig.js"></script>
+  <script src="src/combat.js"></script>
+  <script src="src/fighter.js"></script>
+  <script src="src/companions.js"></script>
+  <script src="src/player.js"></script>
+  <script src="src/enemies.js"></script>
+  <script src="src/bosses.js"></script>
+  <script src="src/ui.js"></script>
+  <script src="src/game.js"></script>
+</body>
+</html>
