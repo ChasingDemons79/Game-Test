@@ -173,6 +173,7 @@ class Boss extends Fighter {
         this.lastAttackId = choice.id;
         this.faceAt(player.x, player.z);
         this.startAct('windup', choice.windup * (this.phase === 2 ? 0.8 : 1));
+        Sound.play('warn');
         this.animate(dt);
         return;
       }

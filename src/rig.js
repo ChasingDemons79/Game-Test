@@ -25,6 +25,8 @@ const Rig = {
   },
   box(w, h, d, color, parent, x = 0, y = 0, z = 0) {
     const m = new THREE.Mesh(Rig.geo(w, h, d), Rig.mat(color));
+    m.castShadow = true;
+    m.receiveShadow = true;
     m.position.set(x, y, z);
     parent.add(m);
     return m;
@@ -268,6 +270,7 @@ const Rig = {
       const r = (0.55 - i * 0.035) * s;
       const seg = Rig.pivot(root, 0, r, -i * 0.7 * s);
       const m = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), Rig.mat(i % 2 ? color : accent));
+      m.castShadow = true;
       seg.add(m);
       if (i === 0) {
         // Head: a snout, two eyes and a forked tongue.

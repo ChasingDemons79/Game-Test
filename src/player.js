@@ -212,6 +212,7 @@ class Player extends Fighter {
     this.stamina -= 18;
     this.staminaDelay = 0.8;
     this.counts.rolls++;
+    Sound.play('roll');
     const act = this.startAct('roll', CONFIG.PLAYER.rollTime);
     act.dx = dx; act.dz = dz;
     this.yaw = Math.atan2(dx, dz);
@@ -227,6 +228,7 @@ class Player extends Fighter {
     this.staminaDelay = 0.8;
     this.counts.attacks++;
     this.startAct(kind, kind === 'heavy' ? 1.1 : 0.55);
+    Sound.play(kind === 'heavy' ? 'heavySwing' : 'swing');
   }
 
   // Strikes land inside the middle window of each swing.
@@ -240,7 +242,10 @@ class Player extends Fighter {
     const range = (heavy ? 2.9 : 2.3) + (this.rider ? 0.6 : 0);
     const dmg = this.baseDamage * (heavy ? 2.4 : 1) * (this.rider ? 1.1 : 1);
     const hits = Combat.cone(this, Game.hostileTargets(), range, heavy ? 1.6 : 1.9, dmg, { stagger: heavy ? 0.45 : 0.2 });
-    if (hits > 0) a.hit = true;
+    if (hits > 0) {
+      a.hit = true;
+      Sound.play('hit');
+    }
   }
 
   startDash(kind, dx, dz, speed, dur) {
@@ -286,6 +291,7 @@ class Player extends Fighter {
     comp.rider = this;
     comp.yaw = this.yaw;
     this.counts.mounts++;
+    Sound.play('mount');
     Game.msg(`Mounted ${comp.def.name}`);
   }
 
@@ -309,6 +315,7 @@ class Player extends Fighter {
     if (!comp) { Game.msg('Ride a companion to use its ability'); return; }
     if (comp.abilityCD > 0) { Game.msg(`${comp.def.abilityName} ready in ${comp.abilityCD.toFixed(1)}s`); return; }
     comp.abilityCD = MOUNT_TUNING.abilityCooldown;
+    Sound.play('ability');
     const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
     switch (comp.def.ability) {
       case 'charge':
@@ -361,6 +368,7 @@ class Player extends Fighter {
     this.counts.flasks++;
     this.hp = Math.min(this.maxHp, this.hp + this.maxHp * CONFIG.PLAYER.flaskHeal);
     Fx.spark(this.x, this.y + 1.2, this.z, 0x7dff9a, 14);
+    Sound.play('flask');
     Game.msg('Flask used');
   }
 
@@ -372,7 +380,9 @@ class Player extends Fighter {
 
     const ang = Util.angleTo(this.x, this.z, fromX, fromZ);
     const frontal = Math.abs(Util.wrap(ang - this.yaw)) < 1.9;
-    if (this.blocking && frontal) {
+    const blocked = this.blocking && frontal;
+    if (blocked) {
+      Sound.play('block');
       this.stamina -= amount * 1.1;
       this.staminaDelay = 1.0;
       amount *= 0.2;
@@ -400,6 +410,7 @@ class Player extends Fighter {
       }
     }
 
+    if (!blocked) Sound.play('hurt');
     this.hp -= amount;
     this.hurt = 0.3;
     this.stagger = Math.max(this.stagger, opts.stagger ?? 0.3);

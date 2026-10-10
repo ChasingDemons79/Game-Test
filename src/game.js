@@ -32,26 +32,41 @@ const Accounts = {
   },
 };
 
-const TUTORIAL = [
-  { text: 'Move with W A S D or the left stick', done: g => g.player.counts.moved > 6 },
-  { text: 'Look around with the mouse or the right stick', done: g => g.lookSum > 250 },
-  { text: 'Strike the training dummy: left click or X (twice)', done: g => g.player.counts.attacks >= 2 },
-  { text: 'Hold right click, C or LB to block. Blocking drains stamina', done: g => g.player.counts.blocks > 0.8 },
-  { text: 'Roll with Space or A to dodge', done: g => g.player.counts.rolls >= 1 },
-  {
-    text: 'Drink a flask with F or D-pad down (you took a wound)',
-    enter: g => { g.player.hp = g.player.maxHp * 0.65; },
-    done: g => g.player.counts.flasks >= 1,
-  },
-  {
-    text: 'Choose a companion from the menu that opens',
-    enter: g => g.openCompanionMenu(null),
-    done: g => !!g.companion,
-  },
-  { text: 'Mount with R or View. Use V or RB for its ability', done: g => g.player.counts.mounts >= 1 },
-  { text: 'Summon your ally with T or D-pad up', done: g => g.player.counts.summons >= 1 },
-  { text: 'Rest at the camp bonfire with E or B', done: g => g.restCount >= 1 },
-];
+// Two tutorials with the same goals. Each step's `done` check is shared, only the wording differs.
+const TUTORIAL_STEPS = {
+  keyboard: [
+    { text: 'Move with W A S D', done: g => g.player.counts.moved > 6 },
+    { text: 'Look around with the mouse (click the game first)', done: g => g.lookSum > 250 },
+    { text: 'Strike the training dummy: left click (twice)', done: g => g.player.counts.attacks >= 2 },
+    { text: 'Hold right click or C to block. Blocking drains stamina', done: g => g.player.counts.blocks > 0.8 },
+    { text: 'Roll with Space to dodge', done: g => g.player.counts.rolls >= 1 },
+    {
+      text: 'Drink a flask with F (you took a wound)',
+      enter: g => { g.player.hp = g.player.maxHp * 0.65; },
+      done: g => g.player.counts.flasks >= 1,
+    },
+    { text: 'Choose a companion from the menu that opens', enter: g => g.openCompanionMenu(null), done: g => !!g.companion },
+    { text: 'Mount with R. Use V for its ability', done: g => g.player.counts.mounts >= 1 },
+    { text: 'Summon your ally with T', done: g => g.player.counts.summons >= 1 },
+    { text: 'Rest at the camp bonfire with E', done: g => g.restCount >= 1 },
+  ],
+  pad: [
+    { text: 'Move with the left stick', done: g => g.player.counts.moved > 6 },
+    { text: 'Look around with the right stick', done: g => g.lookSum > 250 },
+    { text: 'Strike the training dummy: X (twice)', done: g => g.player.counts.attacks >= 2 },
+    { text: 'Hold LB to block. Blocking drains stamina', done: g => g.player.counts.blocks > 0.8 },
+    { text: 'Roll with A to dodge', done: g => g.player.counts.rolls >= 1 },
+    {
+      text: 'Drink a flask with D-pad down (you took a wound)',
+      enter: g => { g.player.hp = g.player.maxHp * 0.65; },
+      done: g => g.player.counts.flasks >= 1,
+    },
+    { text: 'Choose a companion from the menu that opens', enter: g => g.openCompanionMenu(null), done: g => !!g.companion },
+    { text: 'Mount with View. Press RB for its ability', done: g => g.player.counts.mounts >= 1 },
+    { text: 'Summon your ally with D-pad up', done: g => g.player.counts.summons >= 1 },
+    { text: 'Rest at the camp bonfire with B', done: g => g.restCount >= 1 },
+  ],
+};
 
 const Game = {
   difficulty: DIFFICULTIES[1],
@@ -83,23 +98,45 @@ const Game = {
   titleT: 0,
   pendingVictory: false,
   authMode: 'signup',
+  tutChoice: 'keyboard',
+  highQuality: true,
 
   init() {
     const canvas = document.getElementById('game');
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.1;
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x9bb0c0);
-    this.scene.fog = new THREE.Fog(0x9bb0c0, 140, 460);
+    // A vertical sky gradient that fades into the fog colour at the horizon.
+    const skyCanvas = document.createElement('canvas');
+    skyCanvas.width = 4;
+    skyCanvas.height = 256;
+    const sky = skyCanvas.getContext('2d');
+    const grad = sky.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, '#3f6fa3');
+    grad.addColorStop(0.55, '#b8cfe0');
+    grad.addColorStop(1, '#d9cfb0');
+    sky.fillStyle = grad;
+    sky.fillRect(0, 0, 4, 256);
+    this.scene.background = new THREE.CanvasTexture(skyCanvas);
+    this.scene.fog = new THREE.Fog(0xb8cfe0, 150, 470);
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 900);
 
-    const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x3a3020, 0.7);
-    const sun = new THREE.DirectionalLight(0xffe7b0, 0.85);
-    sun.position.set(80, 120, 40);
-    this.scene.add(hemi, sun);
+    const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x3a3020, 0.75);
+    const sun = new THREE.DirectionalLight(0xffe7b0, 1.0);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 10, far: 400 });
+    sun.shadow.camera.updateProjectionMatrix();
+    sun.shadow.bias = -0.0006;
+    sun.shadow.normalBias = 0.5;
+    this.sun = sun;
+    this.scene.add(hemi, sun, sun.target);
+    this.setQuality(localStorage.getItem('hollowcrown.graphics') !== 'low');
 
     Fx.init(this.scene);
     World.build(this.scene);
@@ -112,6 +149,7 @@ const Game = {
     this.scene.add(this.player.group);
     this.player.reset(SITES.camp.x, World.heightAt(SITES.camp.x, SITES.camp.z), SITES.camp.z);
 
+    Sound.loadSettings();
     window.addEventListener('resize', () => {
       this.renderer.setSize(window.innerWidth, window.innerHeight, false);
       this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -124,12 +162,32 @@ const Game = {
     requestAnimationFrame(now => this.loop(now));
   },
 
+  // High quality turns on shadows and full pixel density. Low is for older machines.
+  setQuality(high) {
+    this.highQuality = high;
+    this.renderer.shadowMap.enabled = high;
+    this.sun.castShadow = high;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 2 : 1));
+    this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+    try { localStorage.setItem('hollowcrown.graphics', high ? 'high' : 'low'); } catch (e) { /* optional */ }
+  },
+
+  // The shadow map follows the focus point so shadows stay sharp around the player.
+  followSun(x, y, z) {
+    this.sun.target.position.set(x, y, z);
+    this.sun.position.set(x + 60, y + 110, z + 35);
+  },
+
   bindUi() {
     const $ = id => document.getElementById(id);
     $('btn-new').onclick = () => this.openAuth('signup');
     $('btn-signin').onclick = () => this.openAuth('signin');
     $('btn-continue').onclick = () => this.continueLast();
     $('btn-controls').onclick = () => this.setState('controls');
+    $('btn-padguide').onclick = () => this.setState('padguide');
+    $('padguide-back').onclick = () => this.setState('title');
+    $('tut-keyboard').onclick = () => this.setTutChoice('keyboard');
+    $('tut-pad').onclick = () => this.setTutChoice('pad');
     $('controls-back').onclick = () => {
       if (this.controlsFromGame) {
         this.controlsFromGame = false;
@@ -168,7 +226,7 @@ const Game = {
 
   setState(name) {
     this.state = name;
-    const screens = { title: 'screen-title', auth: 'screen-auth', difficulty: 'screen-difficulty', controls: 'screen-controls' };
+    const screens = { title: 'screen-title', auth: 'screen-auth', difficulty: 'screen-difficulty', controls: 'screen-controls', padguide: 'screen-padguide' };
     if (screens[name]) {
       UI.show(screens[name]);
       UI.showHud(false);
@@ -178,6 +236,7 @@ const Game = {
       UI.showHud(true);
     }
     if (name === 'title') this.refreshTitle();
+    if (name === 'difficulty') this.setTutChoice(Input.usingGamepad() ? 'pad' : 'keyboard');
     if (name === 'playing') UI.closeMenu();
     if (name === 'dead') UI.death(true);
   },
@@ -239,8 +298,15 @@ const Game = {
     this.throneOpen = false;
     this.player.stats = { vigor: 1, end: 1, str: 1 };
     this.player.souls = 0;
-    this.startWorld({ tutorial: true });
+    this.startWorld({ tutorial: true, tutMode: this.tutChoice });
     this.saveGame();
+  },
+
+  // The difficulty screen offers a keyboard or controller tutorial. It defaults to the device in use.
+  setTutChoice(mode) {
+    this.tutChoice = mode;
+    document.getElementById('tut-keyboard').classList.toggle('selected', mode === 'keyboard');
+    document.getElementById('tut-pad').classList.toggle('selected', mode === 'pad');
   },
 
   continueLast() {
@@ -278,11 +344,11 @@ const Game = {
     this.player.stats = { ...save.stats };
     this.player.souls = save.souls || 0;
     this.throneOpen = !!save.throneOpen;
-    this.startWorld({ tutorial: !save.tutorialDone, companion: save.companion, drop: save.drop });
+    this.startWorld({ tutorial: !save.tutorialDone, tutMode: Input.usingGamepad() ? 'pad' : 'keyboard', companion: save.companion, drop: save.drop });
   },
 
   // Rebuilds enemies and bosses for the chosen difficulty and places the player at their bonfire.
-  startWorld({ tutorial = false, companion = null, drop = null } = {}) {
+  startWorld({ tutorial = false, tutMode = 'keyboard', companion = null, drop = null } = {}) {
     for (const e of this.enemies) this.scene.remove(e.group);
     for (const b of this.bosses) this.scene.remove(b.group);
     if (this.pet) { this.scene.remove(this.pet.group); this.pet = null; }
@@ -320,7 +386,7 @@ const Game = {
     this.restoreDrop(drop);
 
     this.restCount = 0;
-    this.tut = tutorial ? { step: 0 } : null;
+    this.tut = tutorial ? { step: 0, mode: tutMode } : null;
     this.setState('playing');
     if (this.tut) {
       const c = SITES.camp;
@@ -363,6 +429,7 @@ const Game = {
 
   onEnemyDeath(e) {
     if (e.dummy) return;
+    Sound.play('kill');
     const gain = Math.round(e.def.souls * this.difficulty.souls);
     this.player.souls += gain;
     UI.setSouls(this.player.souls);
@@ -406,6 +473,7 @@ const Game = {
     pet.syncGroup();
     this.scene.add(pet.group);
     this.pet = pet;
+    Sound.play('summon');
     this.petCD = PET_TUNING.cooldown;
     p.counts.summons++;
     Fx.spark(pet.x, pet.y + 1, pet.z, 0xffe0a0, 18);
@@ -428,6 +496,7 @@ const Game = {
   },
 
   onPlayerDeath() {
+    Sound.play('death');
     this.setState('dead');
     this.deathT = 0;
     this.lockTarget = null;
@@ -578,6 +647,7 @@ const Game = {
 
   rest(bf) {
     this.closeMenu();
+    Sound.play('rest');
     this.lastBonfire = bf.id;
     const p = this.player;
     p.hp = p.maxHp;
@@ -620,7 +690,12 @@ const Game = {
     this.setState('menu');
     if (document.pointerLockElement) document.exitPointerLock();
     const items = [{ label: 'Resume', onPick: () => this.closeMenu() }];
+    items.push({ label: `Sound effects: ${Sound.sfxOn ? 'On' : 'Off'}`, onPick: () => { Sound.setSfx(!Sound.sfxOn); this.openPause(); } });
+    items.push({ label: `Music: ${Sound.musicOn ? 'On' : 'Off'}`, onPick: () => { Sound.setMusic(!Sound.musicOn); this.openPause(); } });
+    items.push({ label: `Graphics: ${this.highQuality ? 'High (shadows)' : 'Low'}`, sub: 'Turn off shadows on older machines', onPick: () => { this.setQuality(!this.highQuality); this.openPause(); } });
     if (this.tut) items.push({ label: 'Skip tutorial', sub: 'Begin your journey now', onPick: () => this.finishTutorial() });
+    items.push({ label: 'Keyboard tutorial', sub: 'Restart the tutorial with key prompts', onPick: () => this.startTutorial('keyboard') });
+    items.push({ label: 'Controller tutorial', sub: 'Restart the tutorial with gamepad prompts', onPick: () => this.startTutorial('pad') });
     items.push({ label: 'Controls', sub: 'Review the keys and buttons', onPick: () => { this.controlsFromGame = true; this.setState('controls'); } });
     items.push({ label: 'Save and return to title', onPick: () => { this.saveGame(); this.setState('title'); } });
     UI.menu('Paused', 'Your progress is saved at bonfires and when you leave', items, { onBack: () => this.closeMenu() });
@@ -630,18 +705,38 @@ const Game = {
   banner(title, sub, ms) { UI.banner(title, sub, ms); },
 
   // Tutorial
+  tutSteps() {
+    return this.tut ? TUTORIAL_STEPS[this.tut.mode] : null;
+  },
+
   enterTutorialStep() {
-    const step = TUTORIAL[this.tut.step];
+    const step = this.tutSteps()[this.tut.step];
     if (!step) return;
     step.enter?.(this);
   },
 
+  // Restarts the tutorial in the chosen wording. Used from the pause menu.
+  startTutorial(mode) {
+    this.closeMenu();
+    this.tut = { step: 0, mode };
+    this.lookSum = 0;
+    this.restCount = 0;
+    if (!this.enemies.some(e => e.dummy)) {
+      const c = SITES.camp;
+      this.spawnEnemy('skeleton', c.x + 3, c.z + 10, { dummy: true });
+    }
+    this.enterTutorialStep();
+    this.msg(mode === 'pad' ? 'Controller tutorial started' : 'Keyboard tutorial started');
+    this.saveGame();
+  },
+
   updateTutorial() {
     if (!this.tut) return;
-    const step = TUTORIAL[this.tut.step];
+    const steps = this.tutSteps();
+    const step = steps[this.tut.step];
     if (step && step.done(this)) {
       this.tut.step++;
-      if (this.tut.step >= TUTORIAL.length) {
+      if (this.tut.step >= steps.length) {
         this.finishTutorial();
         return;
       }
@@ -660,11 +755,14 @@ const Game = {
   // Boss callbacks
   onBossActivated(boss) {
     this.activeBoss = boss;
+    Sound.play('roar');
+    Sound.setBoss(true);
     UI.bossBar(boss);
     this.banner(boss.name, boss.def.intro, 4500);
   },
 
   onBossPhase(boss, p) {
+    Sound.play('roar');
     this.banner(boss.name, boss.def.phaseLines[p - 1], 3500);
     Fx.ring(boss.x, boss.y, boss.z, 8, 0xff8060, 0.8);
   },
@@ -674,14 +772,17 @@ const Game = {
     const gain = Math.round(boss.def.souls * this.difficulty.souls);
     this.player.souls += gain;
     UI.setSouls(this.player.souls);
+    Sound.play('bossDown');
     if (this.activeBoss === boss) {
       this.activeBoss = null;
       UI.bossBar(null);
+      Sound.setBoss(false);
     }
     this.lockTarget = null;
     this.banner(`${boss.name} has fallen`, `+${gain.toLocaleString()} souls`, 4500);
     if (this.defeated.size >= this.bosses.length - 1 && !this.throneOpen) {
       this.throneOpen = true;
+      Sound.play('seal');
       World.removeSealRing();
       this.banner('The seal breaks', 'The Throne of the Hollow Crown lies open', 5000);
     }
@@ -731,18 +832,21 @@ const Game = {
     const bf = World.nearestBonfire(p.x, p.z, 4.5);
     if (bf && !this.discovered.has(bf.id)) {
       this.discovered.add(bf.id);
+      Sound.play('pickup');
       this.msg(`Bonfire discovered: ${bf.name}`);
       this.saveGame();
     }
     if (this.dropPile && Util.dist(p.x, p.z, this.dropPile.x, this.dropPile.z) < CONFIG.SOULS_DROP_RADIUS) {
       p.souls += this.dropPile.amount;
+      Sound.play('pickup');
       this.msg(`Recovered ${this.dropPile.amount.toLocaleString()} souls`);
       this.clearDrop();
       UI.setSouls(p.souls);
       this.saveGame();
     }
     if (bf) {
-      UI.setPrompt(this.state === 'playing' ? 'E / B: rest at the bonfire' : '');
+      const rest = Input.usingGamepad() ? 'B' : 'E';
+      UI.setPrompt(this.state === 'playing' ? `${rest}: rest at the bonfire` : '');
       if (Input.pressed('interact') && this.state === 'playing') this.openBonfire(bf);
     } else {
       UI.setPrompt('');
@@ -770,6 +874,7 @@ const Game = {
     UI.setSouls(p.souls);
     UI.setLock(!!this.lockTarget);
     UI.bossBar(this.activeBoss);
+    if (!!this.activeBoss !== Sound.bossMode) Sound.setBoss(!!this.activeBoss);
     if (this.companion) {
       const c = this.companion;
       const ab = c.abilityCD > 0 ? `${c.def.abilityName} ${c.abilityCD.toFixed(1)}s` : `${c.def.abilityName} ready (V)`;
@@ -779,7 +884,7 @@ const Game = {
     } else {
       UI.setCompanion('No companion (choose at a bonfire)');
     }
-    UI.setTutorial(this.tut ? TUTORIAL.map(t => ({ text: t.text })) : null, this.tut ? this.tut.step : 0);
+    UI.setTutorial(this.tut ? this.tutSteps().map(t => ({ text: t.text })) : null, this.tut ? this.tut.step : 0);
   },
 
   // Camera
@@ -810,6 +915,7 @@ const Game = {
     if (cy < ground) cy = ground;
     this.camera.position.set(cx, cy, cz);
     this.camera.lookAt(tx, ty, tz);
+    this.followSun(tx, ty, tz);
   },
 
   idleCamera(dt) {
@@ -819,6 +925,7 @@ const Game = {
     const y = World.heightAt(c.x, c.z);
     this.camera.position.set(c.x + Math.sin(a) * 34, y + 14, c.z + Math.cos(a) * 34);
     this.camera.lookAt(c.x, y + 3, c.z);
+    this.followSun(c.x, y, c.z);
   },
 
   // Simulation
@@ -868,6 +975,7 @@ const Game = {
         this.victoryT = 0;
         this.setState('menu');
         UI.victory(true);
+        Sound.play('victory');
       }
     }
   },
@@ -886,12 +994,12 @@ const Game = {
 
     // A press that closes a menu must not also act on the world in the same frame.
     const menuWasOpen = UI.menuOpen;
-    if (['title', 'auth', 'difficulty', 'controls'].includes(this.state) || menuWasOpen) {
+    if (['title', 'auth', 'difficulty', 'controls', 'padguide'].includes(this.state) || menuWasOpen) {
       UI.navigate();
     }
     if (this.state === 'auth' || this.state === 'controls' || this.state === 'difficulty') {
       if (Input.pressed('back')) {
-        const back = { auth: 'auth-back', difficulty: 'diff-back', controls: 'controls-back' }[this.state];
+        const back = { auth: 'auth-back', difficulty: 'diff-back', controls: 'controls-back', padguide: 'padguide-back' }[this.state];
         document.getElementById(back).click();
       }
     }
@@ -904,7 +1012,7 @@ const Game = {
       Input.takeWheel();
       this.updateCamera(0);
       this.updateHud();
-    } else if (this.state === 'title' || this.state === 'auth' || this.state === 'difficulty' || this.state === 'controls') {
+    } else if (['title', 'auth', 'difficulty', 'controls', 'padguide'].includes(this.state)) {
       Input.takeLook();
       Input.takeWheel();
       this.idleCamera(dt);

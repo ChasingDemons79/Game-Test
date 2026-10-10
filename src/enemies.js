@@ -178,6 +178,7 @@ class Enemy extends Fighter {
       const dx = target.x - this.x, dz = target.z - this.z;
       const d = Math.hypot(dx, dz) || 1;
       const y0 = this.y + 1.4;
+      Sound.play('arrow');
       Fx.projectile({
         x: this.x, y: y0, z: this.z,
         dir: { x: dx / d, y: (target.y + 1.1 - y0) / d * 0.6, z: dz / d },

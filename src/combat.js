@@ -118,6 +118,7 @@ const Fx = {
         h.mesh.material.color.setHex(h.color);
         if (!h.poison && !h.fired) {
           h.fired = true;
+          Sound.play('boom');
           h.onActive?.(h);
           if (player && !player.dead && Util.dist(h.x, h.z, player.x, player.z) < h.r + player.radius) {
             player.takeHit(h.dmg, h.x, h.z, { source: 'hazard' });

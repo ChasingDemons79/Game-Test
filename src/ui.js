@@ -78,7 +78,10 @@ const UI = {
         s.textContent = it.sub;
         b.appendChild(s);
       }
-      b.addEventListener('click', () => it.onPick?.());
+      b.addEventListener('click', () => {
+        Sound.play('ui');
+        it.onPick?.();
+      });
       e.menuItems.appendChild(b);
     }
     e.menuHint.textContent = hint || 'Arrow keys or D-pad to choose, Enter or A to confirm, Esc or B to go back';

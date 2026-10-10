@@ -50,6 +50,7 @@
         <button id="btn-continue" class="primary" disabled>Continue</button>
         <button id="btn-new">New Pilgrim</button>
         <button id="btn-signin">Sign In</button>
+        <button id="btn-padguide">Controller Guide</button>
         <button id="btn-controls">Controls</button>
       </div>
       <p id="title-user" class="small"></p>
@@ -86,6 +87,11 @@
       <p class="kicker">Choose your trial</p>
       <h2>Difficulty</h2>
       <div id="diff-list" class="choices"></div>
+      <p class="kicker tut-label">Tutorial</p>
+      <div class="choices two">
+        <button id="tut-keyboard" type="button">Keyboard &amp; mouse<span class="sub">Key and mouse prompts</span></button>
+        <button id="tut-pad" type="button">Controller<span class="sub">Gamepad button prompts</span></button>
+      </div>
       <div class="stack"><button id="diff-back">Back</button></div>
     </div>
   </section>
@@ -141,6 +147,36 @@
     </div>
   </section>
 
+  <!-- Controller guide -->
+  <section id="screen-padguide" class="screen hidden">
+    <div class="card wide">
+      <p class="kicker">Gamepad</p>
+      <h2>Controller Guide</h2>
+      <p class="small">Connect a controller before you start. The tutorial switches to button prompts automatically.</p>
+      <div class="pad-grid">
+        <div class="chip"><b>Left stick</b><span>Move</span></div>
+        <div class="chip"><b>Right stick</b><span>Look / camera</span></div>
+        <div class="chip"><b>A</b><span>Roll, jump, rise while flying</span></div>
+        <div class="chip"><b>X</b><span>Light attack</span></div>
+        <div class="chip"><b>Y</b><span>Heavy attack</span></div>
+        <div class="chip"><b>LB (hold)</b><span>Block</span></div>
+        <div class="chip"><b>RB</b><span>Mount ability</span></div>
+        <div class="chip"><b>LT</b><span>Descend while flying</span></div>
+        <div class="chip"><b>RT</b><span>Light attack (alternative)</span></div>
+        <div class="chip"><b>L3</b><span>Sprint</span></div>
+        <div class="chip"><b>R3</b><span>Lock on</span></div>
+        <div class="chip"><b>B</b><span>Interact, rest at bonfires</span></div>
+        <div class="chip"><b>View</b><span>Mount or dismount</span></div>
+        <div class="chip"><b>Start</b><span>Pause menu</span></div>
+        <div class="chip"><b>D-pad down</b><span>Flask</span></div>
+        <div class="chip"><b>D-pad up</b><span>Summon ally</span></div>
+      </div>
+      <h3 class="guide-h">Menus</h3>
+      <p class="small">D-pad to move the highlight, A to confirm, B to go back. The highlighted button has a gold outline.</p>
+      <div class="stack"><button id="padguide-back">Back</button></div>
+    </div>
+  </section>
+
   <!-- Generic menu used for pause, bonfires and choices -->
   <div id="menu" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="menu-title">
     <div class="card menu-card">
@@ -165,6 +201,7 @@
   <script src="vendor/three.min.js"></script>
   <script src="src/config.js"></script>
   <script src="src/util.js"></script>
+  <script src="src/audio.js"></script>
   <script src="src/input.js"></script>
   <script src="src/world.js"></script>
   <script src="src/rig.js"></script>

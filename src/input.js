@@ -4,7 +4,7 @@
 const Input = (() => {
   // Action -> bindings. Gamepad indices follow the "standard" controller layout.
   const BIND = {
-    light:     { mouse: [0], keys: [], gp: [2] },           // LMB / X
+    light:     { mouse: [0], keys: [], gp: [2, 7] },        // LMB / X or RT
     heavy:     { mouse: [], keys: ['KeyQ'], gp: [3] },      // Q / Y
     block:     { mouse: [2], keys: ['KeyC'], gp: [4] },     // RMB / LB
     dodge:     { mouse: [], keys: ['Space'], gp: [0] },     // Space / A (on foot)
@@ -57,6 +57,7 @@ const Input = (() => {
     window.addEventListener('keydown', e => {
       // Let text fields receive every key, including Space and the movement keys.
       if (isTextField(e.target)) return;
+      Sound.unlock();
       if (PREVENT.has(e.code)) e.preventDefault();
       frame.device = 'keyboard';
       if (e.repeat) return;
@@ -64,9 +65,12 @@ const Input = (() => {
       for (const a of keyActions[e.code] || []) queue.add(a);
     });
     window.addEventListener('keyup', e => keys.delete(e.code));
+    // Menu buttons sit outside the canvas, so clicks anywhere also unlock audio.
+    window.addEventListener('pointerdown', () => Sound.unlock());
     window.addEventListener('blur', () => { keys.clear(); mouse.clear(); });
 
     canvas.addEventListener('mousedown', e => {
+      Sound.unlock();
       frame.device = 'keyboard';
       mouse.add(e.button);
       for (const a of mouseActions[e.button] || []) queue.add(a);
@@ -115,6 +119,7 @@ const Input = (() => {
         nowPressed[i] = true;
         if (!prevGp[i]) {
           frame.device = 'gamepad';
+          Sound.unlock();
           for (const a of gpActions[i] || []) queue.add(a);
         }
       }
@@ -126,6 +131,7 @@ const Input = (() => {
     attach,
     poll,
     frame,
+    usingGamepad: () => frame.device === 'gamepad',
     held: isHeld,
     pressed: action => queue.has(action),
     // Movement in screen space: x = right, y = forward. Keyboard and left stick combined.

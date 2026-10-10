@@ -98,14 +98,14 @@ const World = {
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.receiveShadow = false;
+    mesh.receiveShadow = true;
     scene.add(mesh);
   },
 
   buildLake(scene) {
     const geo = new THREE.CircleGeometry(LAKE.r * 1.02, 40);
     geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshLambertMaterial({ color: 0x2e5f7a, transparent: true, opacity: 0.75 });
+    const mat = new THREE.MeshPhongMaterial({ color: 0x2e5f7a, transparent: true, opacity: 0.78, shininess: 90, specular: 0x88aacc });
     const m = new THREE.Mesh(geo, mat);
     m.position.set(LAKE.x, -0.8, LAKE.z);
     scene.add(m);
@@ -135,8 +135,41 @@ const World = {
     World.addInstanced(scene, trees, 'pine');
     World.addInstanced(scene, dead, 'dead');
     World.addInstanced(scene, rocks, 'rock');
+    World.buildGrass(scene);
     for (const t of [...trees, ...dead]) World.obstacles.push({ x: t.x, z: t.z, r: 0.5 * t.s + 0.3 });
     for (const t of rocks) World.obstacles.push({ x: t.x, z: t.z, r: 0.9 * t.s * 0.8 });
+  },
+
+  // Grass blades: one instanced draw call for thousands of tufts, varied in colour and tilt.
+  buildGrass(scene) {
+    const r = Util.rng(CONFIG.SEED + 7);
+    const count = 16000;
+    const geo = new THREE.ConeGeometry(0.1, 0.7, 3).translate(0, 0.35, 0);
+    const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff }), count);
+    const dummy = new THREE.Object3D();
+    const c = new THREE.Color();
+    let n = 0;
+    for (let tries = 0; tries < count * 2 && n < count; tries++) {
+      const x = (r() - 0.5) * CONFIG.WORLD_HALF * 1.9;
+      const z = (r() - 0.5) * CONFIG.WORLD_HALF * 1.9;
+      const h = World.heightAt(x, z);
+      if (h < 0.8 || h > 34) continue;
+      if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + 2) continue;
+      if (World.nearSite(x, z, 2)) continue;
+      dummy.position.set(x, h, z);
+      dummy.rotation.set((r() - 0.5) * 0.4, r() * Math.PI * 2, (r() - 0.5) * 0.4);
+      dummy.scale.setScalar(0.6 + r() * 0.9);
+      dummy.updateMatrix();
+      im.setMatrixAt(n, dummy.matrix);
+      c.setHSL(0.2 + r() * 0.06, 0.45 + r() * 0.15, 0.2 + r() * 0.12);
+      im.setColorAt(n, c);
+      n++;
+    }
+    im.count = n;
+    im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    im.receiveShadow = true;
+    scene.add(im);
   },
 
   addInstanced(scene, items, kind) {
@@ -145,6 +178,8 @@ const World = {
     const add = (geo, color) => {
       const mat = new THREE.MeshLambertMaterial({ color, flatShading: true });
       const im = new THREE.InstancedMesh(geo, mat, items.length);
+      im.castShadow = true;
+      im.receiveShadow = true;
       items.forEach((t, i) => {
         dummy.position.set(t.x, t.y, t.z);
         dummy.rotation.set(0, (t.x * 13.1 + t.z * 7.7) % 6.28, 0);
